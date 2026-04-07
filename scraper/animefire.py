@@ -1,17 +1,17 @@
-import cloudscraper
+import requests
 from bs4 import BeautifulSoup
 import re
-import json as _json
 
 BASE = "https://animefire.io"
-
-scraper = cloudscraper.create_scraper(
-    browser={"browser": "chrome", "platform": "windows", "mobile": False}
-)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+    "Referer": BASE,
+    "Accept-Language": "pt-BR,pt;q=0.9"
+}
 
 def _get(url):
     try:
-        r = scraper.get(url, timeout=15)
+        r = requests.get(url, headers=HEADERS, timeout=10)
         r.raise_for_status()
         return r
     except Exception:
@@ -25,7 +25,6 @@ def search(query: str):
         return []
     soup = BeautifulSoup(r.text, "html.parser")
     results = []
-    seen = set()
     for card in soup.select("article.cardUltimosEps, div.divCardUltimosEps"):
         a = card.find("a", href=True)
         img = card.find("img")
@@ -121,6 +120,7 @@ def get_anime(slug: str):
     }
 
 def get_episode_sources(slug: str, ep_num: int):
+    import json as _json
     r = _get(f"{BASE}/animes/{slug}/{ep_num}")
     if not r:
         return []
