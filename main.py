@@ -38,7 +38,6 @@ def anime_info(slug: str):
         raise HTTPException(status_code=404, detail="Anime nao encontrado")
     return data
 
-
 @app.get("/anime/{slug}/episodes")
 def anime_episodes(slug: str):
     from scraper.animefire import get_all_episodes
@@ -52,10 +51,9 @@ def anime_episode(slug: str, ep_num: int):
     sources = get_episode_sources(slug, ep_num)
     if not sources:
         raise HTTPException(status_code=404, detail="Episodio nao encontrado ou sem fontes")
-    return {
-        "slug": slug,
-        "episode": ep_num,
-        "sources": sources
-    }
+    return {"slug": slug, "episode": ep_num, "sources": sources}
 
 @app.get("/debug/{slug}")
+def debug(slug: str):
+    from scraper.animefire import debug_selectors
+    return debug_selectors(slug)
