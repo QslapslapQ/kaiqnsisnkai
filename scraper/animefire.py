@@ -25,6 +25,8 @@ def search(query: str):
         return []
     soup = BeautifulSoup(r.text, "html.parser")
     results = []
+    seen_links = set()
+
     for card in soup.select("article.cardUltimosEps, div.divCardUltimosEps"):
         a = card.find("a", href=True)
         img = card.find("img")
@@ -32,16 +34,23 @@ def search(query: str):
         if not a:
             continue
         href = a["href"] if a["href"].startswith("http") else BASE + a["href"]
+        if href in seen_links:
+            continue
+        seen_links.add(href)
+
         raw_slug = href.split("/animes/")[-1].replace("-todos-os-episodios", "").strip("/")
+
         if raw_slug.endswith("-dublado"):
             version = "dublado"
             base_slug = raw_slug[:-len("-dublado")]
         else:
             version = "legendado"
             base_slug = raw_slug
+
         image_url = None
         if img:
             image_url = img.get("data-src") or img.get("src") or img.get("data-lazy-src")
+
         existing = next((x for x in results if x["slug"] == base_slug), None)
         if existing:
             existing["versions"].append({"version": version, "slug": raw_slug, "link": href})
@@ -63,14 +72,17 @@ def get_anime(slug: str):
     if not r:
         return None
     soup = BeautifulSoup(r.text, "html.parser")
+
     def sel(*args):
         for s in args:
             el = soup.select_one(s)
             if el:
                 return el
         return None
+
     title_el = sel("h1.animeTitle", "div.divMainNomeAnime h1", "h1")
     synopsis_el = sel("div.divSinopse")
+
     image_url = None
     for img in soup.select("img"):
         src = img.get("data-src") or img.get("src") or ""
@@ -80,11 +92,13 @@ def get_anime(slug: str):
         if any(x in src for x in ["/img/animes/", "/capas/"]):
             image_url = src
             break
+
     genre_tags = soup.select("div.animeInfo a")
     genres_text = ", ".join(
         a.text.strip() for a in genre_tags
         if a.text.strip() and not re.match(r"^A[0-9]+$", a.text.strip())
     ) or None
+
     score_text = None
     for span in soup.select("div.animeInfo span, span"):
         t = span.text.strip()
@@ -95,6 +109,7 @@ def get_anime(slug: str):
                 break
         except ValueError:
             pass
+
     episodes = []
     seen_eps = set()
     for ep_link in soup.select("a.lEp, a[href*='/animes/']"):
@@ -102,12 +117,14 @@ def get_anime(slug: str):
         if ep_href in seen_eps:
             continue
         seen_eps.add(ep_href)
-        ep_num_match = re.search(r'/([0-9]+)', ep_href)
+        ep_num_match = re.search(r'/([0-9]+)$', ep_href)
         if not ep_num_match:
             continue
         ep_num = int(ep_num_match.group(1))
         episodes.append({"episode": ep_num, "link": ep_href if ep_href.startswith("http") else BASE + ep_href})
+
     episodes.sort(key=lambda x: x["episode"])
+
     return {
         "slug": slug,
         "title": title_el.text.strip() if title_el else slug,
@@ -158,14 +175,20 @@ def get_trending():
         if not a:
             continue
         href = a["href"] if a["href"].startswith("http") else BASE + a["href"]
-        slug = href.split("/animes/")[-1].replace("-todos-os-episodios", "").strip("/")
+        # pega so o slug do anime, sem numero de episodio
+        slug = href.split("/animes/")[-1].strip("/")
+        slug = re.sub(r'/[0-9]+$', '', slug)
+        slug = slug.replace("-todos-os-episodios", "")
         if slug in seen:
             continue
         seen.add(slug)
         image_url = None
         if img:
             image_url = img.get("data-src") or img.get("src") or img.get("data-lazy-src")
-        results.append({"slug": slug, "title": title.text.strip() if title else slug, "image": image_url})
+        # titulo limpo sem "- Episodio X"
+        clean_title = title.text.strip() if title else slug
+        clean_title = re.sub(r'\s*-\s*Epis[oó]dio\s*\d+.*$', '', clean_title, flags=re.IGNORECASE).strip()
+        results.append({"slug": slug, "title": clean_title, "image": image_url})
     return results
 
 def debug_selectors(slug: str):
