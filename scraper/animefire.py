@@ -1,17 +1,17 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import re
+import json as _json
 
 BASE = "https://animefire.io"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
-    "Referer": BASE,
-    "Accept-Language": "pt-BR,pt;q=0.9"
-}
+
+scraper = cloudscraper.create_scraper(
+    browser={"browser": "chrome", "platform": "windows", "mobile": False}
+)
 
 def _get(url):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        r = scraper.get(url, timeout=15)
         r.raise_for_status()
         return r
     except Exception:
@@ -26,7 +26,6 @@ def search(query: str):
     soup = BeautifulSoup(r.text, "html.parser")
     results = []
     seen = set()
-
     for card in soup.select("article.cardUltimosEps, div.divCardUltimosEps"):
         a = card.find("a", href=True)
         img = card.find("img")
@@ -35,28 +34,18 @@ def search(query: str):
             continue
         href = a["href"] if a["href"].startswith("http") else BASE + a["href"]
         raw_slug = href.split("/animes/")[-1].replace("-todos-os-episodios", "").strip("/")
-
-        # detectar versao
         if raw_slug.endswith("-dublado"):
             version = "dublado"
             base_slug = raw_slug[:-len("-dublado")]
         else:
             version = "legendado"
             base_slug = raw_slug
-
-        # imagem com fallbacks
         image_url = None
         if img:
             image_url = img.get("data-src") or img.get("src") or img.get("data-lazy-src")
-
-        # se ja existe esse base_slug, so adiciona a versao
         existing = next((x for x in results if x["slug"] == base_slug), None)
         if existing:
-            existing["versions"].append({
-                "version": version,
-                "slug": raw_slug,
-                "link": href
-            })
+            existing["versions"].append({"version": version, "slug": raw_slug, "link": href})
         else:
             results.append({
                 "slug": base_slug,
@@ -64,7 +53,6 @@ def search(query: str):
                 "image": image_url,
                 "versions": [{"version": version, "slug": raw_slug, "link": href}]
             })
-
     return results
 
 def get_anime(slug: str):
@@ -76,38 +64,28 @@ def get_anime(slug: str):
     if not r:
         return None
     soup = BeautifulSoup(r.text, "html.parser")
-
-    # seletores amplos - pega o primeiro que existir
     def sel(*args):
         for s in args:
             el = soup.select_one(s)
             if el:
                 return el
         return None
-
-    title_el    = sel("h1.animeTitle", "div.divMainNomeAnime h1", "h1")
+    title_el = sel("h1.animeTitle", "div.divMainNomeAnime h1", "h1")
     synopsis_el = sel("div.divSinopse")
-
-    # imagem principal da pagina do anime (coluna esquerda, nao cards laterais)
     image_url = None
     for img in soup.select("img"):
         src = img.get("data-src") or img.get("src") or ""
         classes = img.get("class", [])
-        # pula imagens de cards de episodios e avatares
         if "imgAnimes" in classes or "cmtImg" in classes:
             continue
         if any(x in src for x in ["/img/animes/", "/capas/"]):
             image_url = src
             break
-
-    # generos: links dentro de animeInfo, limpa classificacao indicativa
     genre_tags = soup.select("div.animeInfo a")
     genres_text = ", ".join(
         a.text.strip() for a in genre_tags
-        if a.text.strip() and not __import__("re").match(r"^A[0-9]+$", a.text.strip())
+        if a.text.strip() and not re.match(r"^A[0-9]+$", a.text.strip())
     ) or None
-
-    # score: span que contem numero (ex: 8.5)
     score_text = None
     for span in soup.select("div.animeInfo span, span"):
         t = span.text.strip()
@@ -118,8 +96,6 @@ def get_anime(slug: str):
                 break
         except ValueError:
             pass
-
-    # episodios — pega numero do FINAL da URL
     episodes = []
     seen_eps = set()
     for ep_link in soup.select("a.lEp, a[href*='/animes/']"):
@@ -127,18 +103,12 @@ def get_anime(slug: str):
         if ep_href in seen_eps:
             continue
         seen_eps.add(ep_href)
-        # URL padrao: /animes/naruto/1 ou /animes/naruto-todos-os-episodios/1
         ep_num_match = re.search(r'/([0-9]+)', ep_href)
         if not ep_num_match:
             continue
         ep_num = int(ep_num_match.group(1))
-        episodes.append({
-            "episode": ep_num,
-            "link": ep_href if ep_href.startswith("http") else BASE + ep_href
-        })
-
+        episodes.append({"episode": ep_num, "link": ep_href if ep_href.startswith("http") else BASE + ep_href})
     episodes.sort(key=lambda x: x["episode"])
-
     return {
         "slug": slug,
         "title": title_el.text.strip() if title_el else slug,
@@ -151,7 +121,6 @@ def get_anime(slug: str):
     }
 
 def get_episode_sources(slug: str, ep_num: int):
-    import json as _json
     r = _get(f"{BASE}/animes/{slug}/{ep_num}")
     if not r:
         return []
@@ -196,14 +165,9 @@ def get_trending():
         image_url = None
         if img:
             image_url = img.get("data-src") or img.get("src") or img.get("data-lazy-src")
-        results.append({
-            "slug": slug,
-            "title": title.text.strip() if title else slug,
-            "image": image_url
-        })
+        results.append({"slug": slug, "title": title.text.strip() if title else slug, "image": image_url})
     return results
 
-# rota de debug — lista todos os seletores encontrados numa pagina
 def debug_selectors(slug: str):
     url = f"{BASE}/animes/{slug}-todos-os-episodios"
     r = _get(url)

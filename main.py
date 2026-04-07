@@ -59,6 +59,3 @@ def anime_episode(slug: str, ep_num: int):
     }
 
 @app.get("/debug/{slug}")
-def debug(slug: str):
-    from scraper.animefire import debug_selectors
-    return debug_selectors(slug)
